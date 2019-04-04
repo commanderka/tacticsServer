@@ -2,6 +2,13 @@ from autobahn.twisted.websocket import WebSocketServerProtocol,WebSocketServerFa
 import json
 import random
 
+class ClientData:
+    def __init__(self,clientString):
+        self.clientString = clientString
+        self.nSolvedPositions = 0
+        self.nTimeForSolving = 0
+
+
 class BroadcastServerFactory(WebSocketServerFactory):
 
     """
@@ -50,13 +57,13 @@ class BroadcastServerFactory(WebSocketServerFactory):
         #create tactic puzzles
         self.tacticPuzzles = self.loadTacticPuzzles()
         WebSocketServerFactory.__init__(self, url)
-        self.clients = []
-
+        self.clientMap = {}
+        self.hallOfFame = []
 
     def register(self, client):
-        if client not in self.clients:
+        if client.peer not in self.clientMap:
             print("registered client {}".format(client.peer))
-            self.clients.append(client)
+            self.clientMap[client.peer] = ClientData(client.peer)
 
     def unregister(self, client):
         if client in self.clients:
@@ -71,6 +78,8 @@ class BroadcastServerFactory(WebSocketServerFactory):
 
 class MyServerProtocol(WebSocketServerProtocol):
 
+    def __init__(self):
+        self.nPuzzlesPerSession = 5
     def onConnect(self, request):
         print("Client connecting: {0}".format(request.peer))
 
@@ -84,12 +93,27 @@ class MyServerProtocol(WebSocketServerProtocol):
         else:
             message = payload.decode('utf8')
             print("Text message received: {0}".format(message))
-            print("Number of clients:{0}".format(len(self.factory.clients)))
-            if (message=='requestNewPosition'):
+            print("Number of clients:{0}".format(len(self.factory.clientMap.keys())))
+            if message.startswith('requestNewPosition'):
                  # echo back message verbatim
                 randomPositionIndex = random.randint(0,len(self.factory.tacticPuzzles))
                 jsonString = self.factory.tacticPuzzles[randomPositionIndex]               
                 self.sendMessage(jsonString.encode('utf-8'), False)
+            elif message.startswith('setUserName'):
+                 splittedMessage = message.split("_")
+                 self.factory.clientMap[self.peer].sUserName = splittedMessage[1]
+            elif message.startswith('solved'):
+                splittedMessage = message.split("_")
+                milliSecondsNeeded = splittedMessage[1]
+                self.factory.clientMap[self.peer].nTimeForSolving += int(milliSecondsNeeded)
+                self.factory.clientMap[self.peer].nSolvedPositions += 1
+                if self.factory.clientMap[self.peer].nSolvedPositions == self.nPuzzlesPerSession:
+                    self.factory.clientMap[self.peer].solvingSpeed = self.factory.clientMap[self.peer].nTimeForSolving/self.nPuzzlesPerSession
+                    self.factory.hallOfFame.append(self.factory.clientMap[self.peer])
+                    self.factory.hallOfFame.sort(key=lambda x: x.solvingSpeed, reverse=True)
+                    if len(self.factory.hallOfFame) > 10:
+                        self.factory.hallOfFame = self.factory.hallOfFame[0:10]
+                        print(self.factory.hallOfFame)
 
        
 
