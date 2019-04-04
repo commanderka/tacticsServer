@@ -1,0 +1,215 @@
+<!DOCTYPE HTML>
+
+<html>
+
+<head>
+    <meta name="viewport" content="width=device-width, user-scalable=yes, initial-scale=1.0" />
+    <link rel="stylesheet" href="./cm-chessboard-master/styles/page.css" />
+    <link rel="stylesheet" href="./cm-chessboard-master/styles/cm-chessboard.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.2/chess.js"></script>
+    <style type="text/css">
+        div.board {
+            float: left;
+            max-width: 450px;
+            max-height: 430px;
+            width: calc(100vw - 40px);
+            height: calc(95vw - 40px);
+            margin:5px;
+
+        }
+        div.borderDiv{
+            display:inline-block;
+            box-sizing: border-box;
+            border-width:10px;
+            border-style:solid;
+            border-color:transparent;
+            margin:20px;
+        }
+
+
+    </style>
+    <script nomodule
+        src="./cm-chessboard-master/node_modules/browser-es-module-loader/dist/babel-browser-build.js"></script>
+    <script nomodule
+        src="./cm-chessboard-master/node_modules/browser-es-module-loader/dist/browser-es-module-loader.js"></script>
+    <script nomodule
+        src="./cm-chessboard-master/node_modules/browser-es-module-loader/dist/browser-es-module-loader.js"></script>
+    <script nomdule src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+
+    <script type="module">
+        import { INPUT_EVENT_TYPE, MOVE_INPUT_MODE, COLOR, Chessboard } from "./cm-chessboard-master/src/cm-chessboard/Chessboard.js"
+
+        function makeMove(){
+
+        }
+
+        function resetBoarder(){
+            var board = document.getElementById("borderDiv");
+            board.style["border-color"] = "transparent";
+        }
+
+
+        export function inputHandler(event) {
+            console.log("event", event)
+            if (event.type === INPUT_EVENT_TYPE.moveDone) {
+                const move = { from: event.squareFrom, to: event.squareTo }
+                chess2.move(moveSequence[currentMoveIndex])
+                const result = chess.move(move)
+
+                if (result) {
+                    event.chessboard.disableMoveInput()
+
+                    if (chess.fen() == chess2.fen()) {
+                        if (currentMoveIndex == 2) {
+                            var date = new Date()
+                            var currentEndTimeStamp = date.getTime()
+                            var solvingTime = currentEndTimeStamp - currentStartTimeStamp
+                            ws.send("solved_"+solvingTime)
+                            event.chessboard.setPosition(chess.fen())
+                            $('#borderDiv').css({"border-color":"green"})
+
+                            setTimeout(resetBoarder,500);
+
+                            setTimeout(function(){ ws.send("requestNewPosition");},500);
+                           
+                        }
+                        else {
+                            setTimeout(() => {
+                                event.chessboard.setPosition(chess.fen())
+                                chess.move(moveSequence[currentMoveIndex + 1])
+                                chess2.move(moveSequence[currentMoveIndex + 1])
+                                event.chessboard.enableMoveInput(inputHandler, currentColor)
+                                event.chessboard.setPosition(chess.fen())
+                                currentMoveIndex = 2
+
+                            })
+
+
+                        }
+
+
+                    }
+                    else {
+                        $('#borderDiv').css({"border-color":"red"})
+                        setTimeout(resetBoarder,500)
+                        chess.undo()
+                        chess2.undo()
+                        event.chessboard.setPosition(chess.fen())
+                        event.chessboard.enableMoveInput(inputHandler, currentColor)
+                    }
+
+                } else {
+                    console.warn("invalid move", move)
+                }
+
+                return result
+            } else {
+                return true
+            }
+        }
+
+
+        var chess2 = new Chess()
+        var currentMoveIndex = 0
+        var currentStartTimeStamp = 0
+        var moveSequence = []
+        var winningMoves = []
+        var currentColor = "w"
+         // Let us open a web socket
+         if ("WebSocket" in window) {
+                var ws = new WebSocket("ws://localhost:9001");
+            } else {
+                // The browser doesn't support WebSocket
+                alert("WebSocket NOT supported by your Browser!");
+            }
+
+        function StartWebSocket(chess, board) {
+
+                ws.onopen = function () {
+                };
+
+                ws.onmessage = function (evt) {
+                    var date = new Date(); 
+                    currentStartTimeStamp = date.getTime()
+                    currentMoveIndex = 0
+                    var received_msg = evt.data;
+                    const puzzleObject = JSON.parse(received_msg);
+                    chess.load(puzzleObject.fen)
+                    chess2.load(puzzleObject.fen)
+                    board.setPosition(chess.fen())
+                    currentColor = chess.turn()
+
+                    board.setOrientation(currentColor)
+                    board.enableMoveInput(inputHandler, currentColor)
+
+                    moveSequence = puzzleObject.moveSequence
+
+                };
+                ws.onclose = function () {
+                    // websocket is closed
+                };
+                ws.send("setUserName_"+$("#name").val())
+                ws.send("requestNewPosition")
+           
+        }
+
+        function random(min, max) {
+            return Math.floor(Math.random() * (max - min + 1)) + min
+        }
+
+        const chess = new Chess()
+
+        function startSession() {
+            const board = new Chessboard(document.getElementById("board"), {
+                position: chess.fen(),
+                sprite: { url: "./cm-chessboard-master/assets/images/chessboard-sprite.svg" },
+                style: {
+                cssClass: "default",
+                showCoordinates: true, // show ranks and files
+                showBorder: true, // display a border around the board
+                },  
+                orientation: COLOR.white,
+                moveInputMode: MOVE_INPUT_MODE.dragPiece
+
+            })
+            $.get("http://tablebase.lichess.ovh/standard?fen=4k3/6KP/8/8/8/8/7p/8_w_-_-_0_1", function(data, status){
+                 const wdl = data.wdl
+                 const moveList = data.moves
+                 for (var moveIndex = 0; moveIndex<moveList.length; moveIndex++){
+                     const currentMove = moveList[moveIndex];
+                     if (currentMove.wdl == -wdl){
+                         winningMoves.push(currentMove.san)
+                     }
+                 }
+                 alert("Data: " + data + "\nStatus: " + status);
+            });
+
+
+
+            document.querySelector('#startSession').disabled = true
+            document.querySelector('#name').disabled = true
+            StartWebSocket(chess, board);
+        }
+
+        document.querySelector('#startSession').addEventListener('click', startSession);
+    </script>
+
+</head>
+
+<body>
+    <form>
+        <label for="name">Name:
+            <input id="name" type="text">
+        </label>
+        <button type="button" id="startSession">Taktiksession starten</button>
+    </form>
+
+
+    <div id="borderDiv" class="borderDiv">
+        <div class="board" id="board"> </div>
+    </div>
+    
+
+</body>
+
+</html>
