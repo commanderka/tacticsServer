@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, user-scalable=yes, initial-scale=1.0" />
     <link rel="stylesheet" href="./cm-chessboard-master/styles/page.css" />
     <link rel="stylesheet" href="./cm-chessboard-master/styles/cm-chessboard.css" />
+    <link  rel="stylesheet" href="./bootstrap-4.3.1-dist/css/bootstrap.css" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.2/chess.js"></script>
     <style type="text/css">
         div.board {
@@ -25,7 +26,6 @@
             border-color:transparent;
             margin:20px;
         }
-
 
     </style>
     <script nomodule
@@ -52,9 +52,9 @@
         export function inputHandler(event) {
             console.log("event", event)
             if (event.type === INPUT_EVENT_TYPE.moveDone) {
-                const move = { from: event.squareFrom, to: event.squareTo }
-                chess2.move(moveSequence[currentMoveIndex])
-                const result = chess.move(move)
+                const move = { from: event.squareFrom, to: event.squareTo,promotion:"q" }
+                chess2.move(moveSequence[currentMoveIndex],{"sloppy":true})
+                const result = chess.move(move,{"sloppy":true})
 
                 if (result) {
                     event.chessboard.disableMoveInput()
@@ -108,59 +108,15 @@
             }
         }
 
-
+        var chess = new Chess()
         var chess2 = new Chess()
         var currentMoveIndex = 0
         var currentStartTimeStamp = 0
         var moveSequence = []
         var winningMoves = []
         var currentColor = "w"
-         // Let us open a web socket
-         if ("WebSocket" in window) {
-                var ws = new WebSocket("ws://localhost:9001");
-            } else {
-                // The browser doesn't support WebSocket
-                alert("WebSocket NOT supported by your Browser!");
-            }
-
-        function StartWebSocket(chess, board) {
-
-                ws.onopen = function () {
-                };
-
-                ws.onmessage = function (evt) {
-                    var date = new Date(); 
-                    currentStartTimeStamp = date.getTime()
-                    currentMoveIndex = 0
-                    var received_msg = evt.data;
-                    const puzzleObject = JSON.parse(received_msg);
-                    chess.load(puzzleObject.fen)
-                    chess2.load(puzzleObject.fen)
-                    board.setPosition(chess.fen())
-                    currentColor = chess.turn()
-
-                    board.setOrientation(currentColor)
-                    board.enableMoveInput(inputHandler, currentColor)
-
-                    moveSequence = puzzleObject.moveSequence
-
-                };
-                ws.onclose = function () {
-                    // websocket is closed
-                };
-                ws.send("setUserName_"+$("#name").val())
-                ws.send("requestNewPosition")
-           
-        }
-
-        function random(min, max) {
-            return Math.floor(Math.random() * (max - min + 1)) + min
-        }
-
-        const chess = new Chess()
-
-        function startSession() {
-            const board = new Chessboard(document.getElementById("board"), {
+        var ws = new WebSocket("ws://localhost:9001");
+        var board = new Chessboard(document.getElementById("board"), {
                 position: chess.fen(),
                 sprite: { url: "./cm-chessboard-master/assets/images/chessboard-sprite.svg" },
                 style: {
@@ -171,7 +127,70 @@
                 orientation: COLOR.white,
                 moveInputMode: MOVE_INPUT_MODE.dragPiece
 
-            })
+        })
+
+         // Let us open a web socket
+         if ("WebSocket" in window) {
+                StartWebSocket(chess,board)
+            } else {
+                // The browser doesn't support WebSocket
+                alert("WebSocket NOT supported by your Browser!");
+            }
+
+        function StartWebSocket(chess, board) {
+                ws.onopen = function () {
+                };
+
+                ws.onmessage = function (evt) {
+                    var received_msg = evt.data;
+                    const messageObject = JSON.parse(received_msg);
+                    if (messageObject["type"] == "hallOfFame"){
+                        $("#contentTable").find("tr:gt(0)").remove();
+                        for (var nElement = 0; nElement<messageObject["content"].length;nElement++){
+                            var userElement =  messageObject["content"][nElement]
+                            $('#contentTable tr:last').after('<tr><td>'+userElement.sUserName+'</td><td>'+userElement.bestSolvingSpeed+'</td>');
+                        }
+
+                    }
+                    else if (messageObject["type"] == "puzzle"){
+                        var puzzleObject = messageObject["content"];
+                        var date = new Date(); 
+                        currentStartTimeStamp = date.getTime();
+                        currentMoveIndex = 0;
+                        chess.load(puzzleObject.fen);
+                        chess2.load(puzzleObject.fen);
+                        board.setPosition(chess.fen());
+                        currentColor = chess.turn();
+
+                        board.setOrientation(currentColor);
+                        board.enableMoveInput(inputHandler, currentColor);
+
+                        moveSequence = puzzleObject.moveSequence;
+
+                    }
+                    else if (messageObject["type"] == "sessionEnd"){
+                        $('#startSession').attr("disabled",false);
+                        $('#name').attr("disabled",false);
+                        $("#board").hide();
+                        $('.nav-tabs a[href="#hallOfFame"]').tab("show")
+                    }
+
+
+                };
+                ws.onclose = function () {
+                    // websocket is closed
+                };
+
+        }
+
+        function random(min, max) {
+            return Math.floor(Math.random() * (max - min + 1)) + min
+        }
+
+
+        function startSession() {
+           
+            /*
             $.get("http://tablebase.lichess.ovh/standard?fen=4k3/6KP/8/8/8/8/7p/8_w_-_-_0_1", function(data, status){
                  const wdl = data.wdl
                  const moveList = data.moves
@@ -181,14 +200,14 @@
                          winningMoves.push(currentMove.san)
                      }
                  }
-                 alert("Data: " + data + "\nStatus: " + status);
             });
-
-
-
+            */
+            $("#board").show()
             document.querySelector('#startSession').disabled = true
             document.querySelector('#name').disabled = true
-            StartWebSocket(chess, board);
+            ws.send("setUserName_"+$("#name").val())
+            ws.send("requestNewPosition")
+            
         }
 
         document.querySelector('#startSession').addEventListener('click', startSession);
@@ -197,19 +216,49 @@
 </head>
 
 <body>
-    <form>
-        <label for="name">Name:
-            <input id="name" type="text">
-        </label>
-        <button type="button" id="startSession">Taktiksession starten</button>
-    </form>
-
-
-    <div id="borderDiv" class="borderDiv">
-        <div class="board" id="board"> </div>
-    </div>
     
 
+    
+
+        <ul class="nav nav-tabs">
+                <li class="nav-item">
+                  <a class="nav-link active" data-toggle="tab" href="#play">Play</a>
+                </li>
+                <li class="nav-item">
+                  <a class="nav-link" data-toggle="tab" href="#hallOfFame">Hall Of Fame</a>
+                </li>
+              </ul>
+
+            <div class="tab-content clearfix">
+                <div class="tab-pane active" id="play">
+                    <form style="margin-top:10px">
+                        <label for="name">Name:
+                            <input id="name" type="text">
+                        </label>
+                        <button type="button" id="startSession">Taktiksession starten</button>
+                    </form>
+                    <div id="borderDiv" class="borderDiv">
+                        <div class="board" id="board"> </div>
+                    </div>
+                </div>
+            
+                <div class="tab-pane" id="hallOfFame">
+                    <table id="contentTable" class="table" style="margin-top:10px">
+                        <thead class="thead-dark">
+                            <tr>
+                                <th> Name</th>
+                                <th>Average Solving Time [ms]</th>
+                            </tr>
+            
+                        </thead>
+            
+                    </table>
+                </div>
+            </div>
+
+            <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js" integrity="sha384-q8i/X+965DzO0rT7abK41JStQIAqVgRVzpbzo5smXKp4YfRvH+8abtTE1Pi6jizo" crossorigin="anonymous"></script>
+            <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js" integrity="sha384-UO2eT0CpHqdSJQ6hJty5KVphtPhzWj9WO1clHTMGa3JDZwrnQq4sF86dIHNDz0W1" crossorigin="anonymous"></script>
+            <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js" integrity="sha384-JjSmVgyd0p3pXB1rRibZUAYoIIy6OrQ6VrjIEaFf/nJGzIxFDsf4x0xIM+B07jRM" crossorigin="anonymous"></script>          
 </body>
 
 </html>
