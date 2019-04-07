@@ -82,7 +82,7 @@ class MyServerProtocol(WebSocketServerProtocol):
 
     def __init__(self):
         super().__init__()
-        self.nPuzzlesPerSession = 10
+        self.nPuzzlesPerSession = 20
     def onConnect(self, request):
         print("Client connecting: {0}".format(request.peer))
 

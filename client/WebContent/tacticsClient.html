@@ -1,12 +1,11 @@
-<!DOCTYPE HTML>
-
 <html>
 
 <head>
     <meta name="viewport" content="width=device-width, user-scalable=yes, initial-scale=1.0" />
     <link rel="stylesheet" href="./cm-chessboard-master/styles/page.css" />
     <link rel="stylesheet" href="./cm-chessboard-master/styles/cm-chessboard.css" />
-    <link  rel="stylesheet" href="./bootstrap-4.3.1-dist/css/bootstrap.css" />
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous"/>
+    <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js" integrity="sha384-q8i/X+965DzO0rT7abK41JStQIAqVgRVzpbzo5smXKp4YfRvH+8abtTE1Pi6jizo" crossorigin="anonymous"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.2/chess.js"></script>
     <style type="text/css">
         div.board {
@@ -46,6 +45,49 @@
         function resetBoarder(){
             var board = document.getElementById("borderDiv");
             board.style["border-color"] = "transparent";
+        }
+
+        export function inputHandler_endgame(event) {
+            console.log("event", event)
+            if (event.type === INPUT_EVENT_TYPE.moveDone) {
+                const move = { from: event.squareFrom, to: event.squareTo,promotion:"q" }
+                const result = chess.move(move,{"sloppy":true})
+
+                if (result) {
+                    var moveHistory = chess.history()
+                    var move_san = moveHistory[moveHistory.length-1]
+
+                    if (chess.in_checkmate()){
+                        var date = new Date()
+                        var currentEndTimeStamp = date.getTime()
+                        var solvingTime = currentEndTimeStamp - currentStartTimeStamp
+                        event.chessboard.setPosition(chess.fen())
+                        $('#borderDiv').css({"border-color":"green"})
+                        setTimeout(resetBoarder,500);
+                    }
+
+                    else {
+                        if (isWinningMove(move_san)) {
+                            executeBestOpponentTableBaseMove(chess.fen());
+                        }
+                        else {
+                            $('#borderDiv').css({"border-color":"red"})
+                            setTimeout(resetBoarder,500)
+                            chess.undo()
+                            event.chessboard.setPosition(chess.fen())
+                            event.chessboard.enableMoveInput(inputHandler_endgame, currentColor)
+                        }
+                    }
+
+
+                } else {
+                    console.warn("invalid move", move)
+                }
+
+                return result
+            } else {
+                return true
+            }
         }
 
 
@@ -164,7 +206,6 @@
 
                         board.setOrientation(currentColor);
                         board.enableMoveInput(inputHandler, currentColor);
-
                         moveSequence = puzzleObject.moveSequence;
 
                     }
@@ -187,11 +228,28 @@
             return Math.floor(Math.random() * (max - min + 1)) + min
         }
 
+        function isWinningMove(moveString){
+            if (winningMoves.indexOf(moveString) == -1){
+                return false;
+            }
+            else{
+                return true;
+            }
+        }
 
-        function startSession() {
-           
-            /*
-            $.get("http://tablebase.lichess.ovh/standard?fen=4k3/6KP/8/8/8/8/7p/8_w_-_-_0_1", function(data, status){
+        function executeBestOpponentTableBaseMove(fenPosition){
+            $.get("http://tablebase.lichess.ovh/standard?fen="+fenPosition, function(data, status){
+                 const moveList = data.moves;
+                 chess.move(moveList[0]['san']);
+                 board.setPosition(chess.fen())
+                 getWinningMoves(chess.fen());
+                 board.enableMoveInput(inputHandler_endgame, currentColor);
+            });
+        }
+
+        function getWinningMoves(fenPosition){
+            winningMoves = []
+            $.get("http://tablebase.lichess.ovh/standard?fen="+fenPosition, function(data, status){
                  const wdl = data.wdl
                  const moveList = data.moves
                  for (var moveIndex = 0; moveIndex<moveList.length; moveIndex++){
@@ -201,7 +259,38 @@
                      }
                  }
             });
-            */
+
+        }
+
+        function startSession(){
+
+            if ($('#rbCompetition').is(':checked')){
+                startTacticsSession();
+            }
+                
+            else if ($('#rbEndgame').is(':checked')){
+                startEndgameSession();
+            }
+        }
+
+        function startEndgameSession(){
+            $("#board").show()
+            document.querySelector('#startSession').disabled = true
+            document.querySelector('#name').disabled = true
+            var fenStrings = ["8/4kr2/8/8/8/3Q4/3K4/8 w - - 0 1","8/8/3k4/8/3NB3/4K3/8/8 w - - 0 1"];
+            var randomIndex = random(0,1);
+            var fenString = fenStrings[randomIndex];
+            getWinningMoves(fenString);
+            chess.load(fenString)
+            currentColor = chess.turn();
+            board.setOrientation(currentColor);
+            board.setPosition(chess.fen())
+            board.enableMoveInput(inputHandler_endgame, currentColor);
+        }
+
+
+        function startTacticsSession() {
+            board.enableMoveInput(inputHandler, currentColor);
             $("#board").show()
             document.querySelector('#startSession').disabled = true
             document.querySelector('#name').disabled = true
@@ -235,7 +324,10 @@
                         <label for="name">Name:
                             <input id="name" type="text">
                         </label>
-                        <button type="button" id="startSession">Taktiksession starten</button>
+                        <label class="radio-inline"><input type="radio" name="optradio" checked id="rbCompetition">Competition</label>
+                        <label class="radio-inline"><input type="radio" name="optradio" id="rbEndgame">Endgame Practice</label>
+
+                        <button type="button" id="startSession">Session starten</button>
                     </form>
                     <div id="borderDiv" class="borderDiv">
                         <div class="board" id="board"> </div>
@@ -256,7 +348,6 @@
                 </div>
             </div>
 
-            <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js" integrity="sha384-q8i/X+965DzO0rT7abK41JStQIAqVgRVzpbzo5smXKp4YfRvH+8abtTE1Pi6jizo" crossorigin="anonymous"></script>
             <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js" integrity="sha384-UO2eT0CpHqdSJQ6hJty5KVphtPhzWj9WO1clHTMGa3JDZwrnQq4sF86dIHNDz0W1" crossorigin="anonymous"></script>
             <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js" integrity="sha384-JjSmVgyd0p3pXB1rRibZUAYoIIy6OrQ6VrjIEaFf/nJGzIxFDsf4x0xIM+B07jRM" crossorigin="anonymous"></script>          
 </body>
