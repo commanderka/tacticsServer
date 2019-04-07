@@ -70,9 +70,7 @@ class BroadcastServerFactory(WebSocketServerFactory):
             self.clientMap[client.peer] = ClientData(client.peer)
 
     def unregister(self, client):
-        if client.peer in self.clientMap:
-            del self.clientMap[client.peer]
-            print("unregistered client {}".format(client.peer))
+        print("unregistered client {}".format(client.peer))
 
     def broadcast(self, msg):
         print("broadcasting message '{}' ..".format(msg))
@@ -83,13 +81,32 @@ class BroadcastServerFactory(WebSocketServerFactory):
 class MyServerProtocol(WebSocketServerProtocol):
 
     def __init__(self):
+        super().__init__()
         self.nPuzzlesPerSession = 10
     def onConnect(self, request):
         print("Client connecting: {0}".format(request.peer))
 
     def onOpen(self):
         self.factory.register(self)
+        self.sendHallOfFame()
         print("WebSocket connection open.")
+    
+    def sendHallOfFame(self):
+        hallOfFame = list(self.factory.clientMap.values())
+        for element in hallOfFame:
+            print(element.toJson())
+        hallOfFame.sort(key=lambda x: x.bestSolvingSpeed)
+        hallOfFame_filtered = list(filter(lambda x:x.bestSolvingSpeed != sys.maxsize,hallOfFame))
+        if len(hallOfFame_filtered) > 10:
+            hallOfFame_filtered = hallOfFame_filtered[0:10]
+        message = {}
+        message["type"] = "hallOfFame"
+        serializedHallOfFame = []
+        for element in hallOfFame_filtered:
+            serializedHallOfFame.append(element.toJson())
+        message["content"] = serializedHallOfFame
+        jsonString = json.dumps(message)
+        self.sendMessage(jsonString.encode('utf-8'))
 
     def onMessage(self, payload, isBinary):
         if isBinary:
@@ -120,18 +137,8 @@ class MyServerProtocol(WebSocketServerProtocol):
                     if  self.factory.clientMap[self.peer].solvingSpeed < self.factory.clientMap[self.peer].bestSolvingSpeed:
                             self.factory.clientMap[self.peer].bestSolvingSpeed = self.factory.clientMap[self.peer].solvingSpeed
                     self.factory.clientMap[self.peer].nTimeForSolving = 0
-                    hallOfFame = list(self.factory.clientMap.values())
-                    hallOfFame.sort(key=lambda x: x.bestSolvingSpeed)
-                    if len(hallOfFame) > 10:
-                        hallOfFame = hallOfFame[0:10]
-                    message = {}
-                    message["type"] = "hallOfFame"
-                    serializedHallOfFame = []
-                    for element in hallOfFame:
-                        serializedHallOfFame.append(element.toJson())
-                    message["content"] = serializedHallOfFame
-                    jsonString = json.dumps(message)
-                    self.sendMessage(jsonString.encode('utf-8'))
+                   
+                    self.sendHallOfFame()
 
        
 
